@@ -289,4 +289,4 @@ function formatProductResponse(product: any) {
   };
 }
 
-export { manageProductOptions, manageProductOptionsInputSchema };
+export { manageProductOptions, manageProductOptionsInputSchema, ManageProductOptionsInputSchema };

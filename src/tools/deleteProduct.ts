@@ -66,4 +66,4 @@ const deleteProduct = {
   },
 };
 
-export { deleteProduct, deleteProductInputSchema };
+export { deleteProduct, deleteProductInputSchema, DeleteProductInputSchema };

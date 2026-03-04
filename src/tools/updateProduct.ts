@@ -160,4 +160,4 @@ const updateProduct = {
   },
 };
 
-export { updateProduct, updateProductInputSchema };
+export { updateProduct, updateProductInputSchema, UpdateProductInputSchema };

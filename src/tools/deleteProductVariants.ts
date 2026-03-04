@@ -107,4 +107,4 @@ const deleteProductVariants = {
   },
 };
 
-export { deleteProductVariants, deleteProductVariantsInputSchema };
+export { deleteProductVariants, deleteProductVariantsInputSchema, DeleteProductVariantsInputSchema };

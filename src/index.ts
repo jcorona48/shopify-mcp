@@ -20,17 +20,17 @@ import { updateCustomer } from "./tools/updateCustomer.js";
 import { updateOrder } from "./tools/updateOrder.js";
 import { getCollections } from "./tools/getCollections.js";
 import { updateCollection } from "./tools/updateCollection.js";
-import { createProduct, createProductSchema } from "./tools/createProduct.js";
-import { updateProduct, updateProductInputSchema } from "./tools/updateProduct.js";
-import { manageProductVariants, manageProductVariantsInputSchema } from "./tools/manageProductVariants.js";
-import { deleteProductVariants, deleteProductVariantsInputSchema } from "./tools/deleteProductVariants.js";
-import { deleteProduct, deleteProductInputSchema } from "./tools/deleteProduct.js";
-import { manageProductOptions, manageProductOptionsInputSchema  } from "./tools/manageProductOptions.js";
+import { createProduct, CreateProductInputSchema } from "./tools/createProduct.js";
+import { updateProduct, UpdateProductInputSchema } from "./tools/updateProduct.js";
+import { manageProductVariants, ManageProductVariantsInputSchema } from "./tools/manageProductVariants.js";
+import { deleteProductVariants, DeleteProductVariantsInputSchema } from "./tools/deleteProductVariants.js";
+import { deleteProduct, DeleteProductInputSchema } from "./tools/deleteProduct.js";
+import { manageProductOptions, ManageProductOptionsInputSchema  } from "./tools/manageProductOptions.js";
 import { ShopifyAuth } from "./lib/shopifyAuth.js";
 
 
-interface ToolSchema {
-  [key: string]: z.ZodTypeAny;
+interface ToolSchema  {
+  [key: string]: any;
 }
 
 interface Tool {
@@ -262,7 +262,7 @@ const tools: Tools = {
     }
   },
   'update-product': {
-    schema: updateProductInputSchema,
+    schema: UpdateProductInputSchema.shape,
     execute: async (args: any) => {
       return await updateProduct.execute(args);
     }
@@ -292,69 +292,75 @@ const tools: Tools = {
     }
   },
   'create-product': {
-    schema: createProductSchema,
+    schema: CreateProductInputSchema.shape,
     execute: async (args: any) => {
       return await createProduct.execute(args);
     }
   },
   'manage-product-variants': {
-    schema: manageProductVariantsInputSchema,
+    schema: ManageProductVariantsInputSchema.shape,
     execute: async (args: any) => {
       return await manageProductVariants.execute(args);
     }
   },
   'manage-product-options': {
-    schema: manageProductOptionsInputSchema,
+    schema: ManageProductOptionsInputSchema.shape,
     execute: async (args: any) => {
       return await manageProductOptions.execute(args);
     }
   },
   'delete-product': {
-    schema: deleteProductInputSchema,
+    schema: DeleteProductInputSchema.shape,
     execute: async (args: any) => {
       return await deleteProduct.execute(args);
     }
   },
   'delete-product-variants': {
-    schema: deleteProductVariantsInputSchema,
+    schema: DeleteProductVariantsInputSchema.shape,
     execute: async (args: any) => {
       return await deleteProductVariants.execute(args);
     }
   }
 };
 
-const server = new McpServer({
-  name: "shopify",
-  version: "1.0.0",
-  description:
-    "MCP Server for Shopify API, enabling interaction with store data through GraphQL API",
-});
+// Function to create and configure a new MCP server instance
+function createMcpServer(): McpServer {
+  const server = new McpServer({
+    name: "shopify",
+    version: "1.0.0",
+    description:
+      "MCP Server for Shopify API, enabling interaction with store data through GraphQL API",
+  });
 
-Object.entries(tools).forEach(([toolName, tool]) => {
-  server.registerTool(
-    toolName,
-     {
-      title: toolName.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-      inputSchema: tool.schema,
-    },
-    // @ts-ignore
-    async (args: any) => { // @ts-ignore
-      console.log("Executing tool:", toolName);
-      console.log("Arguments:", args);
-      const result = await tool.execute(args);
-      return {
-        content: [{ type: "text", text: JSON.stringify(result) }]
-      };
-    }
-  );
-});
+  Object.entries(tools).forEach(([toolName, tool]) => {
+    server.registerTool(
+      toolName,
+       {
+        title: toolName.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+        inputSchema: tool.schema,
+      },
+      // @ts-ignore
+      async (args: any) => { // @ts-ignore
+        console.log("Executing tool:", toolName);
+        console.log("Arguments:", args);
+        const result = await tool.execute(args);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result) }]
+        };
+      }
+    );
+  });
+
+  return server;
+}
 
 if (HTTP_MODE) {
   const app = express();
   app.use(cors());
   app.use(express.json());
 
-  let sseTransport: SSEServerTransport | null = null;
+  // Store single active session (only one connection at a time)
+  let activeSession: { transport: SSEServerTransport, server: McpServer } | null = null;
 
   app.get('/', (req: Request, res: Response) => {
     res.json({ 
@@ -370,13 +376,33 @@ if (HTTP_MODE) {
   });
 
   app.get("/sse", (req: Request, res: Response) => {
-    sseTransport = new SSEServerTransport('/messages', res);
-    server.connect(sseTransport)
+    // Close any existing connection
+    if (activeSession) {
+      console.log('Closing previous session to accept new connection');
+    }
+    
+    // Create a new server instance for this SSE connection
+    const server = createMcpServer();
+    const sseTransport = new SSEServerTransport('/messages', res);
+    activeSession = { transport: sseTransport, server };
+    
+    // Clean up on disconnect
+    res.on('close', () => {
+      if (activeSession?.transport === sseTransport) {
+        activeSession = null;
+        console.log('SSE connection closed');
+      }
+    });
+    
+    server.connect(sseTransport);
+    console.log('SSE connection established');
   });
 
-  app.post("/messages",async (req: Request, res: Response) => {
-    if (sseTransport) {
-      await sseTransport.handlePostMessage(req, res, req.body);
+  app.post("/messages", async (req: Request, res: Response) => {
+    if (activeSession) {
+      await activeSession.transport.handlePostMessage(req, res, req.body);
+    } else {
+      res.status(400).json({ error: 'No active SSE connection. Connect to /sse first.' });
     }
   });
 
@@ -386,6 +412,7 @@ if (HTTP_MODE) {
   });
 
 } else {
+  const server = createMcpServer();
   const transport = new StdioServerTransport();
   server
     .connect(transport)

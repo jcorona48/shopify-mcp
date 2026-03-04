@@ -162,4 +162,4 @@ const createProduct = {
   },
 };
 
-export { createProduct, createProductSchema };
+export { createProduct, createProductSchema, CreateProductInputSchema };

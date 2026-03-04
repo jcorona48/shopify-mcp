@@ -230,4 +230,4 @@ const manageProductVariants = {
   },
 };
 
-export { manageProductVariants, manageProductVariantsInputSchema, variantOptionBaseSchema };
+export { manageProductVariants, manageProductVariantsInputSchema, ManageProductVariantsInputSchema, variantOptionBaseSchema };
