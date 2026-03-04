@@ -18,9 +18,16 @@ import { getProductById } from "./tools/getProductById.js";
 import { getProducts } from "./tools/getProducts.js";
 import { updateCustomer } from "./tools/updateCustomer.js";
 import { updateOrder } from "./tools/updateOrder.js";
-import { updateProduct, UpdateProductInputSchemaNormal } from "./tools/updateProduct.js";
 import { getCollections } from "./tools/getCollections.js";
 import { updateCollection } from "./tools/updateCollection.js";
+import { createProduct, createProductSchema } from "./tools/createProduct.js";
+import { updateProduct, updateProductInputSchema } from "./tools/updateProduct.js";
+import { manageProductVariants, manageProductVariantsInputSchema } from "./tools/manageProductVariants.js";
+import { deleteProductVariants, deleteProductVariantsInputSchema } from "./tools/deleteProductVariants.js";
+import { deleteProduct, deleteProductInputSchema } from "./tools/deleteProduct.js";
+import { manageProductOptions, manageProductOptionsInputSchema  } from "./tools/manageProductOptions.js";
+import { ShopifyAuth } from "./lib/shopifyAuth.js";
+
 
 interface ToolSchema {
   [key: string]: z.ZodTypeAny;
@@ -41,17 +48,28 @@ dotenv.config();
 
 const SHOPIFY_ACCESS_TOKEN =
   argv.accessToken || process.env.SHOPIFY_ACCESS_TOKEN;
+const SHOPIFY_CLIENT_ID =
+  argv.clientId || process.env.SHOPIFY_CLIENT_ID;
+const SHOPIFY_CLIENT_SECRET =
+  argv.clientSecret || process.env.SHOPIFY_CLIENT_SECRET;
 const MYSHOPIFY_DOMAIN = argv.domain || process.env.MYSHOPIFY_DOMAIN;
 const HTTP_MODE = argv.http || process.env.HTTP_MODE || false;
 const HTTP_PORT = argv.port || process.env.HTTP_PORT || 3001;
 
-process.env.SHOPIFY_ACCESS_TOKEN = SHOPIFY_ACCESS_TOKEN;
+const useClientCredentials = !!(SHOPIFY_CLIENT_ID && SHOPIFY_CLIENT_SECRET);
+
+// Store in process.env for backwards compatibility
 process.env.MYSHOPIFY_DOMAIN = MYSHOPIFY_DOMAIN;
 
-if (!SHOPIFY_ACCESS_TOKEN) {
-  console.error("Error: SHOPIFY_ACCESS_TOKEN is required.");
-  console.error("Please provide it via command line argument or .env file.");
-  console.error("  Command line: --accessToken=your_token");
+// Validate required environment variables
+if (!SHOPIFY_ACCESS_TOKEN && !useClientCredentials) {
+  console.error("Error: Authentication credentials are required.");
+  console.error("");
+  console.error("Option 1 — Static access token (legacy apps):");
+  console.error("  --accessToken=shpat_xxxxx");
+  console.error("");
+  console.error("Option 2 — Client credentials (Dev Dashboard apps, Jan 2026+):");
+  console.error("  --clientId=your_client_id --clientSecret=your_client_secret");
   process.exit(1);
 }
 
@@ -62,16 +80,41 @@ if (!MYSHOPIFY_DOMAIN) {
   process.exit(1);
 }
 
+// Resolve access token (client credentials or static)
+let accessToken: string;
+let auth: ShopifyAuth | null = null;
+
+if (useClientCredentials) {
+  auth = new ShopifyAuth({
+    clientId: SHOPIFY_CLIENT_ID!,
+    clientSecret: SHOPIFY_CLIENT_SECRET!,
+    shopDomain: MYSHOPIFY_DOMAIN,
+  });
+  accessToken = await auth.initialize();
+} else {
+  accessToken = SHOPIFY_ACCESS_TOKEN!;
+}
+
+process.env.SHOPIFY_ACCESS_TOKEN = accessToken;
+
+// Create Shopify GraphQL client
+const API_VERSION = argv.apiVersion || process.env.SHOPIFY_API_VERSION || "2026-01";
 const shopifyClient = new GraphQLClient(
-  `https://${MYSHOPIFY_DOMAIN}/admin/api/2023-07/graphql.json`,
+  `https://${MYSHOPIFY_DOMAIN}/admin/api/${API_VERSION}/graphql.json`,
   {
     headers: {
-      "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN,
+      "X-Shopify-Access-Token": accessToken,
       "Content-Type": "application/json"
     }
   }
 );
 
+// Let the auth manager hot-swap the token header on refresh
+if (auth) {
+  auth.setGraphQLClient(shopifyClient);
+}
+
+// Initialize tools with shopifyClient
 getProducts.initialize(shopifyClient);
 getProductById.initialize(shopifyClient);
 getCustomers.initialize(shopifyClient);
@@ -80,7 +123,12 @@ getOrderById.initialize(shopifyClient);
 updateOrder.initialize(shopifyClient);
 getCustomerOrders.initialize(shopifyClient);
 updateCustomer.initialize(shopifyClient);
+createProduct.initialize(shopifyClient);
 updateProduct.initialize(shopifyClient);
+manageProductVariants.initialize(shopifyClient);
+deleteProductVariants.initialize(shopifyClient);
+deleteProduct.initialize(shopifyClient);
+manageProductOptions.initialize(shopifyClient);
 getCollections.initialize(shopifyClient);
 updateCollection.initialize(shopifyClient);
 
@@ -214,7 +262,7 @@ const tools: Tools = {
     }
   },
   'update-product': {
-    schema: UpdateProductInputSchemaNormal,
+    schema: updateProductInputSchema,
     execute: async (args: any) => {
       return await updateProduct.execute(args);
     }
@@ -241,6 +289,36 @@ const tools: Tools = {
     },
     execute: async (args: any) => {
       return await updateCollection.execute(args);
+    }
+  },
+  'create-product': {
+    schema: createProductSchema,
+    execute: async (args: any) => {
+      return await createProduct.execute(args);
+    }
+  },
+  'manage-product-variants': {
+    schema: manageProductVariantsInputSchema,
+    execute: async (args: any) => {
+      return await manageProductVariants.execute(args);
+    }
+  },
+  'manage-product-options': {
+    schema: manageProductOptionsInputSchema,
+    execute: async (args: any) => {
+      return await manageProductOptions.execute(args);
+    }
+  },
+  'delete-product': {
+    schema: deleteProductInputSchema,
+    execute: async (args: any) => {
+      return await deleteProduct.execute(args);
+    }
+  },
+  'delete-product-variants': {
+    schema: deleteProductVariantsInputSchema,
+    execute: async (args: any) => {
+      return await deleteProductVariants.execute(args);
     }
   }
 };
