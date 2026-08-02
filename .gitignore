@@ -23,3 +23,6 @@ build/
 Thumbs.db 
 .vercel
 .env*.local
+
+.agents
+.claude
