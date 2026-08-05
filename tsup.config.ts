@@ -9,7 +9,7 @@ const pkg = JSON.parse(
 const external = Object.keys(pkg.dependencies ?? {});
 
 export default defineConfig({
-  entry: ["src/index.ts"],
+  entry: ["src/index.ts", "src/api.ts"],
   format: ["esm"],
   target: "node20",
   platform: "node",

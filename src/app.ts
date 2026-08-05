@@ -53,12 +53,15 @@ const SERVER_INFO = {
     "MCP Server for Shopify API, enabling interaction with store data through GraphQL API",
 };
 
-export async function createApp(config: ServerConfig): Promise<HttpServer> {
+export function createApp(
+  config: ServerConfig,
+  options: { host?: string } = {},
+): HttpServer {
   const registry = new StoreRegistry();
   const resolver = new StoreResolver(config, registry);
 
   if (config.shopDomain) {
-    await resolver.initializeDefault().catch((error: unknown) => {
+    void resolver.initializeDefault().catch((error: unknown) => {
       const detail = (error as Error).message.replace(/\s+/g, " ").slice(0, 120);
       console.warn(
         `Default store ${config.shopDomain} is not reachable at startup: ${detail}. ` +
@@ -81,7 +84,7 @@ export async function createApp(config: ServerConfig): Promise<HttpServer> {
 
   setInterval(() => registry.cleanup(), SESSION_SWEEP_MS).unref();
 
-  return new HttpServer(config, mcpHandler, SERVER_INFO.version);
+  return new HttpServer(config, mcpHandler, SERVER_INFO.version, options);
 }
 
 function buildStoreTools(

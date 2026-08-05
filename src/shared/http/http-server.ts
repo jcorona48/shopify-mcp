@@ -12,13 +12,17 @@ import type { McpHttpHandler } from "@modelcontextprotocol/server";
 import type { ServerConfig } from "@/shared/config";
 
 export class HttpServer {
-  private readonly app = createMcpExpressApp();
+  readonly app: ReturnType<typeof createMcpExpressApp>;
 
   constructor(
     private readonly config: ServerConfig,
     mcpHandler: McpHttpHandler,
     version: string,
+    options: { host?: string } = {},
   ) {
+    this.app = createMcpExpressApp(
+      options.host ? { host: options.host } : undefined,
+    );
     const mcp = toNodeHandler(mcpHandler);
     this.app.use("/mcp", (req, res) => void mcp(req, res, req.body));
 

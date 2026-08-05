@@ -7,8 +7,9 @@ y próximos pasos.
 
 ## Comandos
 - Gestor de paquetes: **bun** (NO npm). `bun install`, `bunx`, `bun run`.
-- Build: `bun run build` (tsup → `dist/index.js`, ESM, Node 20+).
+- Build: `bun run build` (tsup → `dist/index.js` + `dist/api.js`, ESM, Node 20+).
 - Start (bundle): `bun run start`. Dev/watch: `bunx tsx src/index.ts ...`.
+- Deploy Vercel: `vercel --prod` (ver sección "Deploy Vercel" abajo).
 - Typecheck: `bunx tsc --noEmit` (tsconfig con `moduleResolution: "bundler"`).
 - Codegen Shopify GraphQL: `bunx graphql-codegen` (config en `.graphqlrc.ts`,
   output en `src/shared/generated/`).
@@ -44,3 +45,21 @@ y próximos pasos.
 - `connect-shop` y `StoreRegistry` (sessions) están **inoperantes** en modo stateless
   (sessionId siempre null): documentado, no tocar. Los fallos de tienda caída se
   degradan a contenido de tool (HTTP 200), no a HTTP 500.
+
+## Deploy Vercel
+- `vercel.json`: `framework: null` (impide la detección de framework Express de
+  Vercel, que rompía el build de tsup) + rewrite `/(.*) → /api`. `public/` vacío
+  como output default (un output dir con archivos sombrearía las rutas, p.ej.
+  `dist/` hacía que `/` devolviera el bundle JS en vez del health check).
+- `api/index.js` (serverless function) solo hace `export { default } from
+  "../dist/api.js"`. El bundle real se genera con tsup: `src/api.ts` es el
+  entry Vercel (`src/api.ts:1-3`), entry añadida en `tsup.config.ts`. tsup
+  resuelve los aliases `@/` (Vercel no los resuelve en `api/`) y elimina el
+  top-level await (el runtime de Vercel no soporta TLA en el bundle de la
+  función).
+- `createApp` es **síncrono** (`src/app.ts`) — `initializeDefault()` es
+  fire-and-forget con `.catch` warn, para evitar TLA en Vercel. `HttpServer`
+  acepta `{ host }` opcional; en Vercel se usa `host: "0.0.0.0"` para desactivar
+  la protección DNS-rebinding (si no, rechaza los hosts `*.vercel.app`).
+- Sin `MYSHOPIFY_DOMAIN`/credenciales en prod, el server arranca en modo
+  "header-only": `get-products` etc. devuelven un error claro como tool content.
